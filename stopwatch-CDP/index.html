@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BusUp Timer — Stopwatch & Countdown</title>
+
+    <!-- Tailwind via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Design tokens -->
+    <style>
+      :root{
+        --busup-green:#19c37d;
+        --busup-green-600:#10a36f;
+        --busup-slate:#0f172a;
+        --busup-slate-2:#111827;
+        --surface:#f8fafc;
+        --surface-2:#ffffff;
+      }
+      .theme-dark{
+        --surface:#0b1220;
+        --surface-2:#0f172a;
+      }
+      /* Flash on countdown finish */
+      @keyframes flash { 0%,100%{background-color:transparent} 50%{background-color:rgba(255,0,0,.18)} }
+      .flash-on-finish { animation: flash 250ms ease-in-out 12; }
+
+      /* ✅ Ensure strong contrast for digits in dark mode */
+      #timeDisplay{ color: rgb(15 23 42); }        /* slate-900 in light */
+      .dark #timeDisplay{ color:#ffffff !important;} /* force white in dark */
+      .dark #millisDisplay{ color: #cbd5e1 !important; } /* slate-300-ish */
+    </style>
+
+    <!-- Tailwind config -->
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              busup: { green: 'var(--busup-green)', green600:'var(--busup-green-600)', slate:'var(--busup-slate)' },
+              surface: { DEFAULT:'var(--surface)', 2:'var(--surface-2)' }
+            },
+            boxShadow: { soft:'0 10px 25px rgba(2,8,23,.08)' }
+          }
+        }
+      }
+    </script>
+
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle r='48' cx='50' cy='50' fill='%2319c37d'/%3E%3Ctext x='50' y='62' font-size='54' text-anchor='middle' fill='white' font-family='Arial, Helvetica, sans-serif'%3EB%3C/text%3E%3C/svg%3E">
+  </head>
+
+  <body class="h-full bg-surface text-slate-900 dark:text-slate-100 transition-colors">
+    <div id="app" class="min-h-full flex flex-col">
+      <!-- ✅ Header uses BusUp green & official logo -->
+      <header class="bg-busup-green text-white">
+        <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+          <a href="https://www.busup.com/en-us/busup" target="_blank" rel="noopener" class="inline-flex items-center gap-3">
+            <img src="https://www.busup.com/hubfs/BUS%20-%202023/busup-logo.svg" alt="BusUp logo" class="h-7 w-auto" />
+            <span class="sr-only">BusUp</span>
+          </a>
+
+          <nav class="flex items-center gap-2">
+            <!-- Theme toggle on green background -->
+            <button id="themeToggle" type="button"
+              class="px-3 py-1.5 rounded-full text-sm bg-white/15 hover:bg-white/25 transition"
+              aria-pressed="false">
+              <span data-i18n="theme">Theme</span>: <span id="themeLabel">Light</span>
+            </button>
+
+            <!-- Language selector on green background -->
+            <label class="sr-only" for="langSelect">Language</label>
+            <select id="langSelect" class="px-3 py-1.5 rounded-full text-sm bg-white/15 hover:bg-white/25 transition">
+              <option value="en">English</option>
+              <option value="es">Español</option>
+              <option value="pt">Português</option>
+            </select>
+          </nav>
+        </div>
+      </header>
+
+      <main class="flex-1">
+        <section class="max-w-5xl mx-auto px-4 py-10">
+          <!-- Mode selector -->
+          <div class="mb-6 flex items-center justify-between flex-wrap gap-3">
+            <div class="inline-flex bg-slate-100 dark:bg-slate-800 rounded-full p-1 shadow-soft">
+              <button id="modeStopwatch" class="mode-btn px-4 py-2 rounded-full text-sm font-medium data-[active=true]:bg-busup-green data-[active=true]:text-white transition" data-mode="stopwatch">
+                <span data-i18n="stopwatch">Stopwatch</span>
+              </button>
+              <button id="modeCountdown" class="mode-btn px-4 py-2 rounded-full text-sm font-medium data-[active=true]:bg-busup-green data-[active=true]:text-white transition" data-mode="countdown">
+                <span data-i18n="countdown">Countdown</span>
+              </button>
+            </div>
+
+            <p id="currentModeLabel" class="text-sm text-slate-600 dark:text-slate-300">
+              <span data-i18n="mode">Mode</span>:
+              <strong id="modeReadable">Stopwatch</strong>
+            </p>
+          </div>
+
+          <!-- Timer card -->
+          <div id="timerCard" class="bg-surface-2 rounded-2xl shadow-soft border border-slate-200/60 dark:border-slate-700/50 p-6 md:p-8">
+            <!-- Countdown input -->
+            <div id="countdownInputRow" class="mb-5 hidden">
+              <label for="timeInput" class="block text-sm mb-2">
+                <span data-i18n="enterTime">Enter time</span>
+                (<code>hh:mm:ss</code>, <code>m:ss</code>, <code>ss</code>, <code>1h 20m 15s</code>, <code>90s</code>)
+              </label>
+              <div class="flex gap-3 items-center">
+                <input id="timeInput" type="text" inputmode="numeric" placeholder="00:08:00 or 480s" class="flex-1 px-4 py-3 rounded-xl bg-slate-100 dark:bg-slate-800 outline-none focus:ring-2 ring-busup-green" />
+                <button id="applyTime" class="px-4 py-3 rounded-xl bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-sm">
+                  <span data-i18n="apply">Apply</span>
+                </button>
+              </div>
+              <p id="validationMsg" class="mt-2 text-sm text-red-600 hidden"></p>
+            </div>
+
+            <!-- Display -->
+            <div id="displayWrap" class="select-none text-center">
+              <div id="timeDisplay" class="font-mono text-[13vw] leading-none md:text-7xl lg:text-8xl tracking-tight">
+                00:00
+              </div>
+              <div id="millisDisplay" class="font-mono text-slate-500 dark:text-slate-400 text-sm mt-1">.000</div>
+            </div>
+
+            <!-- Controls -->
+            <div class="mt-8 grid grid-cols-3 gap-3 sm:gap-4">
+              <button id="startBtn" class="col-span-3 sm:col-span-1 px-5 py-3 rounded-xl bg-busup-green hover:bg-busup-green-600 text-white font-medium shadow-soft">
+                <span data-i18n="start">Start</span>
+              </button>
+              <button id="pauseBtn" class="col-span-3 sm:col-span-1 px-5 py-3 rounded-xl bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 font-medium">
+                <span data-i18n="pause">Pause</span>
+              </button>
+              <button id="resetBtn" class="col-span-3 sm:col-span-1 px-5 py-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 font-medium">
+                <span data-i18n="reset">Reset</span>
+              </button>
+            </div>
+          </div>
+
+          <p class="mt-4 text-xs text-slate-500 dark:text-slate-400">
+            <span data-i18n="a11yTip">Tip</span>:
+            <span data-i18n="tipText">Use the language selector to switch EN/ES/PT. Theme is remembered. Countdown input accepts “1:30”, “90s”, “1h 20m”.</span>
+          </p>
+        </section>
+      </main>
+
+      <!-- ✅ Footer uses BusUp green -->
+      <footer class="mt-auto bg-busup-green text-white">
+        <div class="max-w-5xl mx-auto px-4 py-6 flex items-center justify-between">
+          <div class="text-sm">© <span id="year"></span> BUSUP</div>
+          <img src="https://www.busup.com/hubfs/BUS%20-%202023/busup-logo.svg" alt="" class="h-6 opacity-95" />
+        </div>
+      </footer>
+    </div>
+
+    <script src="./script.js" defer></script>
+  </body>
+</html>
